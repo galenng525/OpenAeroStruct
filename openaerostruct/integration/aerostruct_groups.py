@@ -127,7 +127,7 @@ class CoupledPerformance(om.Group):
 
         self.add_subsystem('aero_funcs',
             VLMFunctionals(surface=surface),
-            promotes_inputs=['v', 'alpha', 'Mach_number', 're', 'rho', 'widths', 'cos_sweep', 'lengths', 'S_ref', 'sec_forces', 't_over_c'], promotes_outputs=['CDv', 'L', 'D', 'CL1', 'CDi', 'CD', 'CL'])
+            promotes_inputs=['v', 'alpha', 'beta', 'Mach_number', 're', 'rho', 'widths', 'cos_sweep', 'lengths', 'S_ref', 'sec_forces', 't_over_c'], promotes_outputs=['CDv', 'L', 'D', 'CL1', 'CDi', 'CD', 'CL'])
 
         if surface['fem_model_type'] == 'tube':
             self.add_subsystem('struct_funcs',
@@ -214,12 +214,20 @@ class AerostructPoint(om.Group):
 
             coupled.add_subsystem(name, coupled_AS_group, promotes_inputs=prom_in)
 
+        # check for ground effect and if so, promote
+        ground_effect = False
+        for surface in surfaces:
+            if surface.get('groundplane', False):
+                ground_effect = True
+
         if self.options['compressible'] == True:
             aero_states = CompressibleVLMStates(surfaces=surfaces, rotational=rotational)
             prom_in = ['v', 'alpha', 'beta', 'rho', 'Mach_number']
         else:
             aero_states = VLMStates(surfaces=surfaces, rotational=rotational)
             prom_in = ['v', 'alpha', 'beta', 'rho']
+        if ground_effect:
+            prom_in.append('height_agl')
 
         # Add a single 'aero_states' component for the whole system within the
         # coupled group.
@@ -260,9 +268,11 @@ class AerostructPoint(om.Group):
         """
         ### End change of solver settings ###
         """
-        prom_in = ['v', 'alpha', 'rho']
+        prom_in = ['v', 'alpha', 'beta', 'rho']
         if self.options['compressible'] == True:
             prom_in.append('Mach_number')
+        if ground_effect:
+            prom_in.append('height_agl')
 
         # Add the coupled group to the model problem
         self.add_subsystem('coupled', coupled, promotes_inputs=prom_in)
@@ -274,7 +284,7 @@ class AerostructPoint(om.Group):
             # the coupled system
             perf_group = CoupledPerformance(surface=surface)
 
-            self.add_subsystem(name + '_perf', perf_group, promotes_inputs=['rho', 'v', 'alpha', 're', 'Mach_number'])
+            self.add_subsystem(name + '_perf', perf_group, promotes_inputs=['rho', 'v', 'alpha', 'beta', 're', 'Mach_number'])
 
         # Add functionals to evaluate performance of the system.
         # Note that only the interesting results are promoted here; not all
